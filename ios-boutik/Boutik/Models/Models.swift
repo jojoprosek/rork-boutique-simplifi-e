@@ -153,6 +153,8 @@ struct Product: Identifiable, Codable, Hashable {
     var isFavorite = false
     var isArchived = false
     var updatedAt = Date()
+    /// Usual supplier. Optional so data saved before this field still decodes.
+    var supplier: String? = nil
 
     var hasPack: Bool { packSize > 1 }
     var margin: Double { retailPrice - costPrice }
@@ -388,6 +390,15 @@ struct OrderLine: Identifiable, Codable, Hashable {
     var productId: UUID
     var quantity: Double // base units
     var unitCost: Double
+    /// Optional so order lists saved before this field still decode.
+    var supplier: String? = nil
+
+    var lineCost: Double { quantity * unitCost }
+    /// Trimmed supplier name, nil when empty.
+    var supplierName: String? {
+        let s = supplier?.trimmingCharacters(in: .whitespaces) ?? ""
+        return s.isEmpty ? nil : s
+    }
 }
 
 struct AppData: Codable {

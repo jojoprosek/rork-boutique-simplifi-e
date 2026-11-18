@@ -17,6 +17,22 @@ enum SampleData {
         ]
     }
 
+    /// Launch argument used by UI tests (see BoutikUITests/LowStockBannerUITests).
+    static let uiTestLowStockArgument = "-uiTestLowStock"
+
+    /// One product with a single unit left and an alert at 0: selling it empties the
+    /// stock and must raise the low-stock banner in Vendre. No PIN, onboarding done.
+    static func uiTestLowStock() -> AppData {
+        var d = AppData()
+        d.settings.onboarded = true
+        d.accounts = defaultAccounts()
+        let soap = Product(name: "Savon test", category: "Hygiène", unitName: "paquet",
+                           costPrice: 500, retailPrice: 800, wholesalePrice: 700, lowStockAlert: 0)
+        d.products = [soap]
+        d.movements = [StockMovement(productId: soap.id, quantity: 1, kind: .initial, unitCost: 500)]
+        return d
+    }
+
     struct LCG {
         var state: UInt64
         mutating func next() -> Double {

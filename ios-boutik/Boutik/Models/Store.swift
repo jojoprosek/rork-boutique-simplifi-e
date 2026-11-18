@@ -23,8 +23,15 @@ final class Store {
     @ObservationIgnored private var saveTask: Task<Void, Never>?
     @ObservationIgnored private var suppressJournal = false
 
+    /// UI-test mode: deterministic data kept in memory only, real data untouched.
+    @ObservationIgnored private let isEphemeral: Bool
+
     init() {
-        if let loaded = Store.load() {
+        let args = ProcessInfo.processInfo.arguments
+        isEphemeral = args.contains(SampleData.uiTestLowStockArgument)
+        if isEphemeral {
+            data = SampleData.uiTestLowStock()
+        } else if let loaded = Store.load() {
             data = loaded
         } else {
             data = AppData()
@@ -50,6 +57,7 @@ final class Store {
         recomputeStock()
         applyFormatting()
         saveTask?.cancel()
+        guard !isEphemeral else { return }
         let snapshot = data
         saveTask = Task {
             try? await Task.sleep(for: .milliseconds(400))
@@ -288,7 +296,7 @@ final class Store {
         if let i = lines.firstIndex(where: { $0.productId == p.id }) {
             lines[i].quantity = max(lines[i].quantity, qty)
         } else {
-            lines.append(OrderLine(productId: p.id, quantity: qty, unitCost: p.costPrice))
+            lines.append(OrderLine(productId: p.id, quantity: qty, unitCost: p.costPrice, supplier: p.supplier))
         }
         data.orderDraft = lines
         Haptics.tap()
@@ -302,6 +310,24 @@ final class Store {
         var lines = orderLines
         if let i = lines.firstIndex(where: { $0.id == line.id }) { lines[i] = line }
         data.orderDraft = lines
+    }
+
+    /// Sets the supplier of an order line and remembers it on the product for next time.
+    func setOrderSupplier(_ name: String, for line: OrderLine) {
+        var l = line
+        l.supplier = name
+        updateOrderLine(l)
+        if let i = data.products.firstIndex(where: { $0.id == line.productId }) {
+            let trimmed = name.trimmingCharacters(in: .whitespaces)
+            data.products[i].supplier = trimmed.isEmpty ? nil : trimmed
+        }
+    }
+
+    /// Every supplier name already used, for quick picking.
+    var knownSuppliers: [String] {
+        let names = data.products.compactMap { $0.supplier?.trimmingCharacters(in: .whitespaces) }
+            + data.payables.map(\.creditor)
+        return Array(Set(names.filter { !$0.isEmpty && $0 != "Fournisseur" })).sorted()
     }
 
     func removeFromOrder(_ ids: [UUID]) {

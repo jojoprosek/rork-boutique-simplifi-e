@@ -35,6 +35,7 @@ struct ProductDetailView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(p.category.uppercased()).font(.caption.weight(.semibold)).foregroundStyle(Color.inkSecondary)
                     Text(p.name).font(.title2.bold()).foregroundStyle(Color.ink)
+                        .accessibilityIdentifier("productDetail.name")
                     HStack(alignment: .firstTextBaseline) {
                         Text(Fmt.money(p.retailPrice)).font(.money(30, weight: .heavy)).foregroundStyle(Color.gain)
                         Text("/ \(p.unitName)").foregroundStyle(Color.inkSecondary)

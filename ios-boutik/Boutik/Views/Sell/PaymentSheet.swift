@@ -96,6 +96,7 @@ struct PaymentSheet: View {
         .safeAreaInset(edge: .bottom) {
             Button("Valider la vente") { validate(override: false) }
                 .buttonStyle(BigButtonStyle(kind: .green))
+                .accessibilityIdentifier("payment.validate")
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(Color.canvas.opacity(0.95))

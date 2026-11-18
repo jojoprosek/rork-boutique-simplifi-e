@@ -179,6 +179,7 @@ struct SaleSuccessView: View {
         .safeAreaInset(edge: .bottom) {
             Button("Nouvelle vente", action: onDone)
                 .buttonStyle(BigButtonStyle(kind: .dark))
+                .accessibilityIdentifier("sale.newSale")
                 .padding(.horizontal, 16).padding(.vertical, 8)
         }
         .onAppear {

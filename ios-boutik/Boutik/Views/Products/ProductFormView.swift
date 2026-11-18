@@ -100,6 +100,10 @@ struct ProductFormView: View {
                 }
                 Stepper("Alerte sous \(Fmt.qty(draft.lowStockAlert)) \(draft.unitName)", value: $draft.lowStockAlert, in: 0...10_000)
                 Toggle("Favori (en haut de la vente)", isOn: $draft.isFavorite)
+                TextField("Fournisseur habituel (facultatif)", text: Binding(
+                    get: { draft.supplier ?? "" },
+                    set: { draft.supplier = $0.isEmpty ? nil : $0 }))
+                    .textInputAutocapitalization(.words)
             }
         }
         .navigationTitle(product == nil ? "Nouveau produit" : "Modifier")

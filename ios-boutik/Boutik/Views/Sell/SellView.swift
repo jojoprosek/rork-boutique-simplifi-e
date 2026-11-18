@@ -320,6 +320,11 @@ struct LowStockBanner: View {
                     .contentShape(.rect)
                 }
                 .buttonStyle(PressableStyle())
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(title(products)). \(subtitle(first, more: products.count - 1))")
+                .accessibilityHint("Ouvre la fiche du produit")
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("lowStockBanner.open")
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.footnote.weight(.bold))
@@ -328,6 +333,7 @@ struct LowStockBanner: View {
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Fermer l'alerte")
+                .accessibilityIdentifier("lowStockBanner.close")
             }
             .padding(.leading, 12)
             .padding(.vertical, 6)
@@ -397,6 +403,7 @@ struct ProductSaleCard: View {
         .buttonStyle(PressableStyle())
         .accessibilityLabel("\(product.name), \(Fmt.money(price)), stock \(Fmt.qty(stock))")
         .accessibilityHint("Touchez pour ajouter au panier")
+        .accessibilityIdentifier("sellProduct.\(product.name)")
     }
 }
 
@@ -431,6 +438,7 @@ struct CartBar: View {
                     .background(Color.gain, in: .capsule)
             }
             .buttonStyle(PressableStyle())
+            .accessibilityIdentifier("cartBar.pay")
         }
         .padding(.leading, 18)
         .padding(.trailing, 8)

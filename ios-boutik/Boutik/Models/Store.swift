@@ -16,6 +16,8 @@ final class Store {
     private(set) var stock: [UUID: Double] = [:]
     var toast: UndoToast?
     var hideAmounts = false
+    /// Products that just crossed their alert threshold because of a sale (shown in Vendre).
+    var lowStockBanner: [UUID] = []
 
     @ObservationIgnored private var undoSnapshot: AppData?
     @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -252,6 +254,8 @@ final class Store {
     @discardableResult
     func recordSale(lines: [SaleLine], client: Client?, globalDiscount: Double, payments: [PaymentPart], note: String) -> Sale {
         let number = data.settings.nextSaleNumber
+        let soldIds = Set(lines.map(\.productId))
+        let lowBefore = Set(activeProducts.filter { soldIds.contains($0.id) && isLow($0) }.map(\.id))
         let sale = Sale(number: number, clientId: client?.id, clientName: client?.name ?? "Client de passage",
                         lines: lines, globalDiscount: globalDiscount, payments: payments.filter { $0.amount > 0 }, note: note)
         perform("Vente de \(Fmt.money(sale.total)) enregistrée", entity: "sale", entityId: sale.id, action: "create") { d in
@@ -262,7 +266,75 @@ final class Store {
             }
         }
         Haptics.success()
+        let crossed = activeProducts.filter { soldIds.contains($0.id) && !lowBefore.contains($0.id) && isLow($0) }.map(\.id)
+        if !crossed.isEmpty {
+            withAnimation(.spring) { lowStockBanner = crossed }
+        }
         return sale
+    }
+
+    // MARK: Supplier order
+
+    var orderLines: [OrderLine] { data.orderDraft ?? [] }
+
+    /// Quantity needed to get back to the alert threshold (at least 1).
+    func missingQuantity(for p: Product) -> Double {
+        max(1, (alertThreshold(for: p) - stockOf(p.id)).rounded(.up))
+    }
+
+    func addToOrder(_ p: Product) {
+        var lines = orderLines
+        let qty = missingQuantity(for: p)
+        if let i = lines.firstIndex(where: { $0.productId == p.id }) {
+            lines[i].quantity = max(lines[i].quantity, qty)
+        } else {
+            lines.append(OrderLine(productId: p.id, quantity: qty, unitCost: p.costPrice))
+        }
+        data.orderDraft = lines
+        Haptics.tap()
+    }
+
+    func addAllLowToOrder() {
+        for p in lowStockProducts where !orderLines.contains(where: { $0.productId == p.id }) { addToOrder(p) }
+    }
+
+    func updateOrderLine(_ line: OrderLine) {
+        var lines = orderLines
+        if let i = lines.firstIndex(where: { $0.id == line.id }) { lines[i] = line }
+        data.orderDraft = lines
+    }
+
+    func removeFromOrder(_ ids: [UUID]) {
+        data.orderDraft = orderLines.filter { !ids.contains($0.id) }
+    }
+
+    func clearOrder() { data.orderDraft = [] }
+
+    var orderTotal: Double { orderLines.reduce(0) { $0 + $1.quantity * $1.unitCost } }
+
+    /// Goods arrived: one purchase movement per line, weighted average cost updated.
+    func receiveOrder(paidFrom: UUID?, creditor: String?) {
+        let lines = orderLines.filter { $0.quantity > 0 }
+        guard !lines.isEmpty else { return }
+        let total = orderTotal
+        let current = stock
+        perform("Commande reçue : \(lines.count) produit\(lines.count > 1 ? "s" : "") en stock", entity: "order", entityId: UUID(), action: "receive") { d in
+            for l in lines {
+                d.movements.append(StockMovement(productId: l.productId, quantity: l.quantity, kind: .purchase,
+                                                 note: "Commande", unitCost: l.unitCost, paidFromAccountId: paidFrom))
+                if l.unitCost > 0, let i = d.products.firstIndex(where: { $0.id == l.productId }) {
+                    let oldQty = max(0, current[l.productId] ?? 0)
+                    d.products[i].costPrice = ((oldQty * d.products[i].costPrice + l.quantity * l.unitCost) / max(1, oldQty + l.quantity)).rounded()
+                }
+            }
+            if let creditor, !creditor.isEmpty {
+                d.payables.append(Payable(creditor: creditor, amount: total,
+                                          dueDate: Calendar.current.date(byAdding: .day, value: 30, to: Date())!,
+                                          note: "Commande de \(lines.count) produit(s)"))
+            }
+            d.orderDraft = []
+        }
+        Haptics.success()
     }
 
     func cancelSale(_ sale: Sale, reason: String) {

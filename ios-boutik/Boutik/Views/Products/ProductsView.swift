@@ -136,19 +136,96 @@ struct ProductRow: View {
 
 struct LowStockView: View {
     @Environment(Store.self) private var store
+    @State private var category: String? = nil
+    @State private var showOrder = false
+
+    private var low: [Product] { store.lowStockProducts }
+    private var categories: [String] {
+        Array(Set(low.map(\.category))).sorted { $0.localizedCompare($1) == .orderedAscending }
+    }
+    private var shown: [Product] {
+        guard let category else { return low }
+        return low.filter { $0.category == category }
+    }
+
     var body: some View {
         List {
+            if categories.count > 1 {
+                Section {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 8) {
+                            chip(nil, label: "Toutes", count: low.count)
+                            ForEach(categories, id: \.self) { c in
+                                chip(c, label: c, count: low.filter { $0.category == c }.count)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                    .scrollIndicators(.hidden)
+                }
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
             Section {
-                ForEach(store.lowStockProducts) { p in
+                if shown.isEmpty {
+                    EmptyStateView(icon: "checkmark.seal", title: "Rien à signaler",
+                                   message: category == nil ? "Aucun produit n'est presque fini." : "Aucun produit presque fini dans « \(category!) ».")
+                        .listRowBackground(Color.clear)
+                }
+                ForEach(shown) { p in
                     NavigationLink { ProductDetailView(productId: p.id) } label: { ProductRow(product: p) }
+                        .swipeActions(edge: .trailing) {
+                            Button { store.addToOrder(p); showOrder = true } label: { Label("Commander", systemImage: "cart.badge.plus") }
+                                .tint(.warn)
+                        }
                 }
             } footer: {
                 Text(store.data.settings.stockAlertThreshold.map { "Un produit apparaît ici quand il en reste \(Fmt.qty($0)) ou moins." }
                      ?? "Un produit apparaît ici quand son stock passe sous son seuil d'alerte.")
             }
         }
+        .animation(.snappy, value: category)
+        .onChange(of: categories) { _, cats in
+            if let c = category, !cats.contains(c) { category = nil }
+        }
         .navigationTitle("Presque finis")
         .toolbar(.hidden, for: .tabBar)
+        .toolbar {
+            if !shown.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        for p in shown where !store.orderLines.contains(where: { $0.productId == p.id }) { store.addToOrder(p) }
+                        showOrder = true
+                    } label: {
+                        Label("Tout commander", systemImage: "cart.badge.plus")
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showOrder) { OrderListSheet() }
+    }
+
+    private func chip(_ value: String?, label: String, count: Int) -> some View {
+        let selected = category == value
+        return Button {
+            category = value
+            Haptics.tap()
+        } label: {
+            HStack(spacing: 6) {
+                Text(label)
+                Text("\(count)")
+                    .font(.caption.weight(.bold))
+                    .padding(.horizontal, 6).padding(.vertical, 1)
+                    .background(selected ? Color.warn.opacity(0.15) : Color.chip, in: .capsule)
+            }
+            .font(.subheadline.weight(selected ? .bold : .medium))
+            .foregroundStyle(selected ? Color.warn : Color.ink)
+            .padding(.horizontal, 14)
+            .frame(height: 40)
+            .background(selected ? Color.warnSoft : Color.card, in: .capsule)
+        }
+        .buttonStyle(.plain)
+        .frame(minHeight: 44)
     }
 }
 

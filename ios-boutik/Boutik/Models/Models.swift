@@ -382,6 +382,14 @@ struct ActivityEntry: Identifiable, Codable, Hashable {
     var text: String
 }
 
+/// A line of the supplier order being prepared ("liste de commande").
+struct OrderLine: Identifiable, Codable, Hashable {
+    var id = UUID()
+    var productId: UUID
+    var quantity: Double // base units
+    var unitCost: Double
+}
+
 struct AppData: Codable {
     var settings = AppSettings()
     var accounts: [MoneyAccount] = []
@@ -399,4 +407,6 @@ struct AppData: Codable {
     var pending: [PendingOperation] = []
     var activity: [ActivityEntry] = []
     var lastSync: Date? = nil
+    /// Optional so data saved before this feature still decodes.
+    var orderDraft: [OrderLine]? = nil
 }

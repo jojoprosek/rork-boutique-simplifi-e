@@ -285,6 +285,7 @@ struct HomeView: View {
 struct LowStockCard: View {
     @Environment(Store.self) private var store
     @State private var showThreshold = false
+    @State private var showOrder = false
 
     private let maxRows = 5
 
@@ -320,8 +321,47 @@ struct LowStockCard: View {
             if !low.isEmpty {
                 ForEach(low.prefix(maxRows)) { p in
                     Divider().padding(.leading, 16)
-                    NavigationLink { ProductDetailView(productId: p.id) } label: { row(p) }
-                        .buttonStyle(.plain)
+                    HStack(spacing: 0) {
+                        NavigationLink { ProductDetailView(productId: p.id) } label: { row(p) }
+                            .buttonStyle(.plain)
+                        Button {
+                            store.addToOrder(p)
+                            showOrder = true
+                        } label: {
+                            Text("Commander")
+                                .font(.footnote.weight(.semibold))
+                                .foregroundStyle(Color.darkButtonText)
+                                .padding(.horizontal, 12)
+                                .frame(minHeight: 34)
+                                .background(Color.darkButton, in: .capsule)
+                                .frame(minHeight: 44)
+                                .contentShape(.rect)
+                        }
+                        .buttonStyle(PressableStyle())
+                        .padding(.trailing, 16)
+                        .accessibilityLabel("Commander \(p.name)")
+                    }
+                }
+                if !store.orderLines.isEmpty {
+                    Divider().padding(.leading, 16)
+                    Button { showOrder = true } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "list.clipboard.fill")
+                            Text("Ma liste de commande").font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Text("\(store.orderLines.count)")
+                                .font(.money(15))
+                                .padding(.horizontal, 9).padding(.vertical, 3)
+                                .background(Color.warnSoft, in: .capsule)
+                                .contentTransition(.numericText())
+                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        }
+                        .foregroundStyle(Color.warn)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 48)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
                 }
                 if low.count > maxRows {
                     Divider().padding(.leading, 16)
@@ -344,6 +384,7 @@ struct LowStockCard: View {
         .shadow(color: .black.opacity(0.05), radius: 14, y: 6)
         .animation(.snappy, value: low.map(\.id))
         .sheet(isPresented: $showThreshold) { StockThresholdSheet() }
+        .sheet(isPresented: $showOrder) { OrderListSheet() }
     }
 
     private func row(_ p: Product) -> some View {
@@ -371,9 +412,9 @@ struct LowStockCard: View {
                     .foregroundStyle(out ? Color.loss : Color.ink)
                 Text("seuil \(Fmt.qty(threshold))").font(.caption2).foregroundStyle(Color.inkSecondary)
             }
-            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Color.inkSecondary)
+            .padding(.trailing, 10)
         }
-        .padding(.horizontal, 16)
+        .padding(.leading, 16)
         .frame(minHeight: 60)
         .contentShape(.rect)
         .accessibilityElement(children: .combine)

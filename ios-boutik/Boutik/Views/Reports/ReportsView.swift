@@ -5,6 +5,9 @@ struct ReportsView: View {
     @Environment(Store.self) private var store
     @State private var period: Period
     @State private var offset = 0
+    @State private var pdfURL: URL?
+    @State private var showPDF = false
+    @State private var pdfFailed = false
 
     init(initial: Period = .today) { _period = State(initialValue: initial) }
 
@@ -91,8 +94,48 @@ struct ReportsView: View {
         .toolbar(.hidden, for: .tabBar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                ShareLink(item: summaryText(stats)) { Image(systemName: "square.and.arrow.up") }
+                Menu {
+                    Button { exportPDF(stats) } label: {
+                        Label("Rapport PDF", systemImage: "doc.richtext")
+                    }
+                    ShareLink(item: summaryText(stats)) {
+                        Label("Partager le résumé", systemImage: "text.alignleft")
+                    }
+                } label: {
+                    Image(systemName: "square.and.arrow.up")
+                }
+                .accessibilityLabel("Partager le rapport")
             }
+        }
+        .sheet(isPresented: $showPDF) {
+            if let pdfURL {
+                ShareSheet(items: [pdfURL])
+                    .presentationDetents([.medium, .large])
+                    .ignoresSafeArea()
+            }
+        }
+        .alert("Impossible de créer le PDF", isPresented: $pdfFailed) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Réessayez dans un instant.") }
+    }
+
+    private func exportPDF(_ stats: Store.Stats) {
+        let s = store.data.settings
+        let data = ReportData(
+            businessName: s.businessName, address: s.address, phone: s.phone,
+            periodTitle: title, stats: stats,
+            buckets: buckets.map { ($0.label, $0.value) },
+            topProducts: topProducts.map { ($0.name, $0.qty, $0.total) },
+            byMethod: byMethod.map { ($0.0.label, $0.1) },
+            expenses: expensesByCat.map { ($0.0, $0.1) },
+            sales: sales)
+        if let url = ReportPDF.make(data) {
+            pdfURL = url
+            Haptics.success()
+            showPDF = true
+        } else {
+            Haptics.warning()
+            pdfFailed = true
         }
     }
 

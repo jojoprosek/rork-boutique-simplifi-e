@@ -68,6 +68,7 @@ struct SellView: View {
     @State private var showCart = false
     @State private var showPayment = false
     @State private var warning: String?
+    @State private var bannerProduct: UUID?
 
     private let columns = [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)]
 
@@ -103,6 +104,31 @@ struct SellView: View {
             }
             .scrollDismissesKeyboard(.immediately)
             .background(Color.canvas.ignoresSafeArea())
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if showBanner {
+                    LowStockBanner(ids: store.lowStockBanner,
+                                   onOpen: { id in
+                                       bannerProduct = id
+                                       withAnimation(.snappy) { store.lowStockBanner = [] }
+                                   },
+                                   onClose: { withAnimation(.snappy) { store.lowStockBanner = [] } })
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: showBanner)
+            .task(id: bannerKey) {
+                guard showBanner else { return }
+                Haptics.warning()
+                try? await Task.sleep(for: .seconds(8))
+                guard !Task.isCancelled else { return }
+                withAnimation(.snappy) { store.lowStockBanner = [] }
+            }
+            .navigationDestination(item: $bannerProduct) { id in
+                ProductDetailView(productId: id)
+            }
             .navigationTitle("Vendre")
             .toolbar {
                 if !store.data.heldCarts.isEmpty {
@@ -141,6 +167,10 @@ struct SellView: View {
     }
 
     // MARK: Pieces
+
+    /// Shown once the payment sheet is closed, so the shopkeeper actually sees it.
+    private var showBanner: Bool { !store.lowStockBanner.isEmpty && !showPayment && !showCart }
+    private var bannerKey: String { "\(showBanner)-\(store.lowStockBanner.map(\.uuidString).joined())" }
 
     private var searchBar: some View {
         HStack(spacing: 10) {
@@ -253,6 +283,71 @@ struct SellView: View {
             Haptics.warning()
             warning = "Aucun produit avec le code \(code). Ajoutez-le depuis l'onglet Produits."
         }
+    }
+}
+
+/// Small warning shown after a sale pushed products under their alert threshold.
+struct LowStockBanner: View {
+    @Environment(Store.self) private var store
+    let ids: [UUID]
+    let onOpen: (UUID) -> Void
+    let onClose: () -> Void
+
+    var body: some View {
+        let products = ids.compactMap { store.product($0) }
+        if let first = products.first {
+            HStack(spacing: 12) {
+                Button { onOpen(first.id) } label: {
+                    HStack(spacing: 12) {
+                        ProductThumb(product: first, size: 40)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(title(products))
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(Color.ink)
+                                .lineLimit(1)
+                            Text(subtitle(first, more: products.count - 1))
+                                .font(.caption)
+                                .foregroundStyle(Color.warn)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        Text("Voir")
+                            .font(.footnote.weight(.semibold))
+                            .foregroundStyle(Color.warn)
+                        Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Color.warn)
+                    }
+                    .frame(minHeight: 44)
+                    .contentShape(.rect)
+                }
+                .buttonStyle(PressableStyle())
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.footnote.weight(.bold))
+                        .foregroundStyle(Color.inkSecondary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
+                }
+                .accessibilityLabel("Fermer l'alerte")
+            }
+            .padding(.leading, 12)
+            .padding(.vertical, 6)
+            .background(Color.warnSoft, in: .rect(cornerRadius: 20, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(Color.warn.opacity(0.25), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
+        }
+    }
+
+    private func title(_ products: [Product]) -> String {
+        products.count == 1 ? "\(products[0].name) est presque fini" : "\(products.count) produits presque finis"
+    }
+
+    private func subtitle(_ p: Product, more: Int) -> String {
+        let qty = store.stockOf(p.id)
+        let left = qty <= 0 ? "Épuisé" : "Il reste \(Fmt.qty(qty)) \(p.unitName)"
+        return more > 0 ? "\(p.name) : \(left) · +\(more) autre\(more > 1 ? "s" : "")" : left
     }
 }
 

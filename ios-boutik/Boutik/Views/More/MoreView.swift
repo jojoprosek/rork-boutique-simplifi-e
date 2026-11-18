@@ -122,9 +122,19 @@ struct SalesSettingsView: View {
                 Stepper("Remise max : \(Int(store.data.settings.maxDiscountPercent)) %", value: $store.data.settings.maxDiscountPercent, in: 0...100, step: 5)
                 Toggle("Note obligatoire pour une remise", isOn: $store.data.settings.noteRequiredForDiscount)
             }
-            Section("Stock") {
+            Section {
                 Stepper("Alerte par défaut : \(Fmt.qty(store.data.settings.defaultLowStock))", value: $store.data.settings.defaultLowStock, in: 0...500)
-            }
+                Toggle("Seuil identique pour tous", isOn: Binding(
+                    get: { store.data.settings.stockAlertThreshold != nil },
+                    set: { store.data.settings.stockAlertThreshold = $0 ? store.data.settings.defaultLowStock : nil }))
+                if let t = store.data.settings.stockAlertThreshold {
+                    Stepper("Alerte à \(Fmt.qty(t)) ou moins", value: Binding(
+                        get: { t }, set: { store.data.settings.stockAlertThreshold = max(0, $0) }), in: 0...10_000)
+                }
+                Toggle("Alerte de stock sur l'accueil", isOn: Binding(
+                    get: { store.data.settings.stockAlertOnHome ?? true },
+                    set: { store.data.settings.stockAlertOnHome = $0 }))
+            } header: { Text("Stock") } footer: { Text("L'alerte « par défaut » s'applique aux nouveaux produits.") }
             Section {
                 TextField("Message", text: $store.data.settings.reminderTemplate, axis: .vertical)
             } header: { Text("Message de rappel") } footer: { Text("{nom}, {montant} et {boutique} sont remplacés automatiquement.") }

@@ -257,6 +257,7 @@ struct SellView: View {
 }
 
 struct ProductSaleCard: View {
+    @Environment(Store.self) private var store
     let product: Product
     let inCart: Double
     let stock: Double
@@ -285,7 +286,7 @@ struct ProductSaleCard: View {
                     Text(Fmt.money(price)).font(.money(18)).foregroundStyle(Color.gain).lineLimit(1).minimumScaleFactor(0.7)
                     Text("Stock : \(Fmt.qty(stock)) \(product.unitName)\(stock > 1 && !product.unitName.hasSuffix("s") ? "s" : "")")
                         .font(.caption)
-                        .foregroundStyle(stock <= product.lowStockAlert ? Color.loss : Color.inkSecondary)
+                        .foregroundStyle(store.isLow(product) ? Color.loss : Color.inkSecondary)
                         .lineLimit(1)
                 }
                 .padding(12)

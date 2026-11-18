@@ -85,6 +85,11 @@ struct AppSettings: Codable, Equatable {
     var maxDiscountPercent: Double = 20
     var noteRequiredForDiscount = false
     var defaultLowStock: Double = 10
+    /// Global low-stock threshold for alerts. nil = use each product's own threshold.
+    /// Optional so data saved before this setting existed still decodes.
+    var stockAlertThreshold: Double? = nil
+    /// Show the low-stock card on the home screen (nil = yes).
+    var stockAlertOnHome: Bool? = nil
     var receiptFooter = "Merci pour votre achat !"
     var reminderTemplate = "Bonjour {nom}, petit rappel : vous devez {montant} à {boutique}. Merci de passer régler dès que possible."
 

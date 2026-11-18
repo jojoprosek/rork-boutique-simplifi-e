@@ -14,6 +14,7 @@ struct HomeView: View {
                     heroCard
                     debtCards
                     accountsRow
+                    if store.data.settings.stockAlertOnHome ?? true { LowStockCard() }
                     alerts
                     if !favorites.isEmpty { favoritesRow }
                     recentOperations
@@ -171,17 +172,8 @@ struct HomeView: View {
 
     @ViewBuilder
     private var alerts: some View {
-        let low = store.lowStockProducts
         let late = store.data.clients.filter { store.isOverdue($0) }
         VStack(spacing: 10) {
-            if !low.isEmpty {
-                NavigationLink { LowStockView() } label: {
-                    AlertRow(icon: "exclamationmark.triangle",
-                             title: low.count == 1 ? "1 produit presque fini" : "\(low.count) produits presque finis",
-                             subtitle: low.prefix(3).map(\.name).joined(separator: ", "),
-                             tint: .loss, fill: .lossSoft)
-                }
-            }
             if !late.isEmpty {
                 NavigationLink { DebtorsView() } label: {
                     AlertRow(icon: "clock.badge.exclamationmark",
@@ -284,6 +276,204 @@ struct HomeView: View {
             }
             .background(Color.card, in: .rect(cornerRadius: 24, style: .continuous))
         }
+    }
+}
+
+// MARK: - Low stock alert
+
+/// Home card listing the products whose stock is at or under the alert threshold.
+struct LowStockCard: View {
+    @Environment(Store.self) private var store
+    @State private var showThreshold = false
+
+    private let maxRows = 5
+
+    var body: some View {
+        let low = store.lowStockProducts
+        let global = store.data.settings.stockAlertThreshold
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 12) {
+                IconBadge(systemName: low.isEmpty ? "checkmark.seal.fill" : "exclamationmark.triangle.fill",
+                          tint: low.isEmpty ? .gain : .loss,
+                          fill: low.isEmpty ? .gainSoft : .lossSoft, size: 40)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(low.isEmpty ? "Stock en ordre" : (low.count == 1 ? "1 produit presque fini" : "\(low.count) produits presque finis"))
+                        .font(.headline).foregroundStyle(Color.ink)
+                        .contentTransition(.numericText())
+                    Text(global.map { "Alerte à \(Fmt.qty($0)) ou moins" } ?? "Alerte selon le seuil de chaque produit")
+                        .font(.caption).foregroundStyle(Color.inkSecondary)
+                }
+                Spacer(minLength: 8)
+                Button { showThreshold = true } label: {
+                    Label("Seuil", systemImage: "slider.horizontal.3")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(Color.ink)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 36)
+                        .background(Color.chip, in: .capsule)
+                }
+                .frame(minHeight: 44)
+                .accessibilityLabel("Régler le seuil d'alerte")
+            }
+            .padding(16)
+
+            if !low.isEmpty {
+                ForEach(low.prefix(maxRows)) { p in
+                    Divider().padding(.leading, 16)
+                    NavigationLink { ProductDetailView(productId: p.id) } label: { row(p) }
+                        .buttonStyle(.plain)
+                }
+                if low.count > maxRows {
+                    Divider().padding(.leading, 16)
+                    NavigationLink { LowStockView() } label: {
+                        HStack {
+                            Text("Voir les \(low.count) produits").font(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.footnote.weight(.bold))
+                        }
+                        .foregroundStyle(Color.gain)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 48)
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .background(Color.card, in: .rect(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 14, y: 6)
+        .animation(.snappy, value: low.map(\.id))
+        .sheet(isPresented: $showThreshold) { StockThresholdSheet() }
+    }
+
+    private func row(_ p: Product) -> some View {
+        let qty = store.stockOf(p.id)
+        let threshold = store.alertThreshold(for: p)
+        let out = qty <= 0
+        return HStack(spacing: 12) {
+            ProductThumb(product: p, size: 40)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(p.name).font(.subheadline.weight(.semibold)).foregroundStyle(Color.ink).lineLimit(1)
+                // Fill bar: how much is left compared with the threshold.
+                GeometryReader { geo in
+                    Capsule().fill(Color.chip)
+                        .overlay(alignment: .leading) {
+                            Capsule().fill(out ? Color.loss : Color.warn)
+                                .frame(width: geo.size.width * min(1, max(0.04, threshold > 0 ? qty / threshold : 0)))
+                        }
+                }
+                .frame(height: 5)
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(out ? "Épuisé" : Fmt.qty(qty))
+                    .font(.money(17))
+                    .foregroundStyle(out ? Color.loss : Color.ink)
+                Text("seuil \(Fmt.qty(threshold))").font(.caption2).foregroundStyle(Color.inkSecondary)
+            }
+            Image(systemName: "chevron.right").font(.caption.weight(.bold)).foregroundStyle(Color.inkSecondary)
+        }
+        .padding(.horizontal, 16)
+        .frame(minHeight: 60)
+        .contentShape(.rect)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(p.name), il reste \(Fmt.qty(qty)), seuil \(Fmt.qty(threshold))")
+    }
+}
+
+/// Lets the shopkeeper choose the threshold used by the home alert.
+struct StockThresholdSheet: View {
+    @Environment(Store.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var useGlobal = false
+    @State private var value: Double = 10
+    @State private var showOnHome = true
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Seuil", selection: $useGlobal) {
+                        Text("Par produit").tag(false)
+                        Text("Le même pour tous").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets())
+                }
+                if useGlobal {
+                    Section {
+                        HStack(spacing: 16) {
+                            Button { value = max(0, value - 1); Haptics.tap() } label: {
+                                Image(systemName: "minus").font(.title3.weight(.bold)).frame(width: 52, height: 52)
+                                    .background(Color.chip, in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                            VStack(spacing: 0) {
+                                TextField("0", value: $value, format: .number)
+                                    .keyboardType(.numberPad)
+                                    .multilineTextAlignment(.center)
+                                    .font(.money(40, weight: .heavy))
+                                Text("ou moins").font(.footnote).foregroundStyle(Color.inkSecondary)
+                            }
+                            .frame(maxWidth: .infinity)
+                            Button { value += 1; Haptics.tap() } label: {
+                                Image(systemName: "plus").font(.title3.weight(.bold)).frame(width: 52, height: 52)
+                                    .background(Color.chip, in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.vertical, 6)
+                        HStack {
+                            ForEach([5.0, 10, 20, 50], id: \.self) { v in
+                                Button(Fmt.qty(v)) { value = v; Haptics.tap() }
+                                    .font(.subheadline.weight(.semibold))
+                                    .foregroundStyle(value == v ? Color.darkButtonText : Color.ink)
+                                    .frame(maxWidth: .infinity, minHeight: 40)
+                                    .background(value == v ? Color.darkButton : Color.chip, in: .capsule)
+                                    .buttonStyle(.plain)
+                            }
+                        }
+                    } footer: {
+                        Text("\(preview) produit\(preview > 1 ? "s" : "") seront signalés.")
+                    }
+                } else {
+                    Section {
+                        Text("Chaque produit utilise son propre seuil, réglable dans sa fiche (Modifier → Stock).")
+                            .font(.subheadline).foregroundStyle(Color.inkSecondary)
+                    }
+                }
+                Section {
+                    Toggle("Afficher sur l'accueil", isOn: $showOnHome)
+                } footer: {
+                    Text("Vous pourrez le réactiver dans Plus → Vente et crédit.")
+                }
+            }
+            .navigationTitle("Alerte de stock")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) { Button("Annuler") { dismiss() } }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("OK") {
+                        store.data.settings.stockAlertThreshold = useGlobal ? max(0, value) : nil
+                        store.data.settings.stockAlertOnHome = showOnHome
+                        Haptics.success()
+                        dismiss()
+                    }
+                }
+            }
+            .onAppear {
+                let s = store.data.settings
+                useGlobal = s.stockAlertThreshold != nil
+                value = s.stockAlertThreshold ?? s.defaultLowStock
+                showOnHome = s.stockAlertOnHome ?? true
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var preview: Int {
+        store.activeProducts.filter { store.stockOf($0.id) <= max(0, value) }.count
     }
 }
 

@@ -113,7 +113,7 @@ struct ProductRow: View {
 
     var body: some View {
         let qty = store.stockOf(product.id)
-        let low = qty <= product.lowStockAlert
+        let low = store.isLow(product)
         HStack(spacing: 12) {
             ProductThumb(product: product, size: 52)
             VStack(alignment: .leading, spacing: 3) {
@@ -143,7 +143,8 @@ struct LowStockView: View {
                     NavigationLink { ProductDetailView(productId: p.id) } label: { ProductRow(product: p) }
                 }
             } footer: {
-                Text("Un produit apparaît ici quand son stock passe sous son seuil d'alerte.")
+                Text(store.data.settings.stockAlertThreshold.map { "Un produit apparaît ici quand il en reste \(Fmt.qty($0)) ou moins." }
+                     ?? "Un produit apparaît ici quand son stock passe sous son seuil d'alerte.")
             }
         }
         .navigationTitle("Presque finis")

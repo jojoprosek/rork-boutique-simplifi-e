@@ -125,8 +125,20 @@ final class Store {
         data.accounts.first { $0.kind == kind } ?? data.accounts.first
     }
 
+    /// Threshold used for alerts: the global one if set, otherwise the product's own.
+    func alertThreshold(for p: Product) -> Double {
+        data.settings.stockAlertThreshold ?? p.lowStockAlert
+    }
+
+    func isLow(_ p: Product) -> Bool { stockOf(p.id) <= alertThreshold(for: p) }
+
+    /// Products under their threshold, emptiest first.
     var lowStockProducts: [Product] {
-        activeProducts.filter { stockOf($0.id) <= $0.lowStockAlert }
+        activeProducts.filter(isLow).sorted {
+            let a = stockOf($0.id) - alertThreshold(for: $0)
+            let b = stockOf($1.id) - alertThreshold(for: $1)
+            return a == b ? $0.name < $1.name : a < b
+        }
     }
 
     // MARK: Money

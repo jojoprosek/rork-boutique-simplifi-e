@@ -47,7 +47,7 @@ struct ProductDetailView: View {
                 .card(radius: 26)
 
                 HStack(spacing: 10) {
-                    stockTile(title: "Il reste", value: "\(Fmt.qty(qty))", sub: p.unitName, color: qty <= p.lowStockAlert ? .loss : .ink)
+                    stockTile(title: "Il reste", value: "\(Fmt.qty(qty))", sub: p.unitName, color: store.isLow(p) ? .loss : .ink)
                     if showCosts {
                         stockTile(title: "Je gagne", value: Fmt.amount(p.margin), sub: "\(Int(p.marginPercent.rounded())) % par \(p.unitName)", color: .gain)
                     }
@@ -101,7 +101,8 @@ struct ProductDetailView: View {
         VStack(spacing: 0) {
             row("Prix d'achat (coût moyen)", Fmt.money(p.costPrice))
             Divider()
-            row("Seuil d'alerte", "\(Fmt.qty(p.lowStockAlert)) \(p.unitName)")
+            row(store.data.settings.stockAlertThreshold == nil ? "Seuil d'alerte" : "Seuil d'alerte (général)",
+                "\(Fmt.qty(store.alertThreshold(for: p))) \(p.unitName)")
             if !p.barcode.isEmpty { Divider(); row("Code-barres", p.barcode) }
             if !p.reference.isEmpty { Divider(); row("Référence", p.reference) }
             ForEach(p.tiers) { t in
